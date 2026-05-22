@@ -1,0 +1,597 @@
+CD TEXTURE OVERLAY BUILDER - BUTTONS AND OPTIONS GUIDE
+Version: v1.0.0
+Mod: KhainOneHDTexture
+
+
+============================================================
+OVERVIEW
+============================================================
+
+CD_Texture_Overlay_Builder is a custom overlay installer for Crimson Desert texture mods.
+
+It builds and applies PAZ/PAMT overlay folders such as:
+
+0037/0.paz
+0037/0.pamt
+0038/0.paz
+0038/0.pamt
+
+The tool does not directly repack the original game PAZ archives. Instead, it creates new overlay archives and updates the game meta files so Crimson Desert can load the new textures.
+
+Important game meta files updated by the tool:
+
+meta/0.pathc
+meta/0.papgt
+
+The tool also includes a Smart Hold / Release Hold system to improve compatibility with other mod managers.
+
+
+============================================================
+MAIN FIELDS
+============================================================
+
+
+GAME FOLDER
+------------------------------------------------------------
+
+This is the main Crimson Desert installation folder.
+
+Example:
+
+G:\SteamLibrary\steamapps\common\Crimson Desert
+
+This folder should contain the game package folders and the meta folder.
+
+The tool needs this path in order to:
+- scan original PAMT entries,
+- create overlay folders,
+- update meta/0.pathc,
+- update meta/0.papgt,
+- manage backups,
+- manage the overlay registry.
+
+
+AUTO DETECT
+------------------------------------------------------------
+
+Automatically tries to find your Crimson Desert installation folder.
+
+Use this if you do not want to manually browse for the game path.
+
+If auto detection fails, select the game folder manually.
+
+
+BROWSE / SELECT GAME FOLDER
+------------------------------------------------------------
+
+Lets you manually select the Crimson Desert game folder.
+
+Use this if Auto Detect does not find the correct path.
+
+
+DDS TEXTURE FOLDER
+------------------------------------------------------------
+
+This is the folder that contains the modded DDS textures.
+
+For best results, use a structured folder like:
+
+CDHD0000/
+└─ 0000/
+   └─ object/
+      └─ texture/
+         └─ your_textures.dds
+
+Recommended:
+
+Select the root mod folder, for example:
+
+CDHD0000
+
+or:
+
+CDHD0000/0000
+
+Avoid selecting only the final texture folder unless you know what you are doing, because the tool may lose some internal path information.
+
+
+BROWSE / SELECT DDS TEXTURE FOLDER
+------------------------------------------------------------
+
+Lets you select the folder containing your modded DDS textures.
+
+
+MOD NAME
+------------------------------------------------------------
+
+Fixed mod name:
+
+KhainOneHDTexture
+
+This name is used internally for registry, manifests, reports, backups, and overlay tracking.
+
+In the public build this field is not editable to avoid user confusion.
+
+
+SOURCE PAMT / TYPE
+------------------------------------------------------------
+
+This option tells the tool where the source textures are expected to belong inside Crimson Desert.
+
+Recommended presets:
+
+0000 - Object textures
+Use this for the main HD object/environment/terrain/prop texture pack.
+
+0009 - Character textures
+Use this only if you want to apply matching shared textures to the character texture package.
+
+0000 - Object sublayer textures
+Use this for sublayer terrain/object texture entries if needed.
+
+The preset is important because Crimson Desert can have repeated texture filenames in different packages. Filtering by PAMT and internal type prevents wrong replacements, such as stone becoming wood.
+
+
+============================================================
+PROCESS OPTIONS
+============================================================
+
+
+APPLY TO GAME
+------------------------------------------------------------
+
+When enabled, the tool builds the overlay and applies it directly to the game by updating:
+
+meta/0.pathc
+meta/0.papgt
+
+When disabled, the tool only builds the overlay output and reports, but does not apply it to the game.
+
+Recommended for normal installation:
+
+ON
+
+
+DRY RUN
+------------------------------------------------------------
+
+Test mode.
+
+When enabled, the tool scans and matches textures but does not build or apply the final overlay.
+
+Use Dry Run to check:
+- how many textures are matched,
+- how many are skipped,
+- how many are ambiguous,
+- possible conflicts.
+
+Recommended before a first real installation:
+
+ON for testing
+OFF for real installation
+
+
+ALLOW UNIQUE FILENAME MATCH
+------------------------------------------------------------
+
+Allows the tool to match textures by filename when the internal path is not fully available.
+
+This is useful when your DDS texture folder contains files that are not perfectly structured by game path.
+
+The tool still uses safety filters to avoid wrong replacements.
+
+Recommended:
+
+ON
+
+
+BACKUP META BEFORE APPLY
+------------------------------------------------------------
+
+Creates a backup of the game meta files before modifying them.
+
+Backed up files include:
+
+meta/0.pathc
+meta/0.papgt
+
+Recommended:
+
+ON
+
+The tool keeps a limited backup history to avoid filling the folder with too many old backups.
+
+
+SCAN CONFLICTS WITH EXISTING OVERLAYS
+------------------------------------------------------------
+
+Checks whether the textures being installed may conflict with existing overlay entries.
+
+This is useful when using multiple mod managers or multiple texture packs.
+
+Recommended:
+
+ON
+
+
+============================================================
+MAIN ACTION BUTTONS
+============================================================
+
+
+BUILD / APPLY OVERLAY
+------------------------------------------------------------
+
+Main installation button.
+
+This button:
+
+1. Scans the game PAMT files.
+2. Loads or builds the PAMT index cache.
+3. Scans your DDS texture folder.
+4. Matches your DDS files to game texture entries.
+5. Splits the mod into multiple overlay folders if needed.
+6. Builds PAZ/PAMT overlay files.
+7. Calculates PAZ hashes using the fast native helper when available.
+8. Updates meta/0.pathc if Apply to Game is enabled.
+9. Rebuilds meta/0.papgt if Apply to Game is enabled.
+10. Saves a report.
+11. Saves a manifest.
+12. Updates the master registry.
+
+The internal PAZ split size is fixed at 3.75 GiB to stay safely below the 4 GiB PAZ limit.
+
+Use this button to install or rebuild the texture overlay.
+
+
+SMART HOLD OVERLAYS
+------------------------------------------------------------
+
+Temporarily disables this texture pack so other mod managers can work without detecting or touching the texture overlay folders.
+
+This button:
+
+1. Reads the master registry.
+2. Finds the overlay folders that belong to KhainOneHDTexture.
+3. Creates a backup of the current meta files.
+4. Removes only this texture pack's entries from the current meta/0.pathc.
+5. Rebuilds meta/0.papgt without this texture overlay.
+6. Moves the registered overlay folders outside the game folder into the HOLD location.
+
+Hold location example:
+
+SteamLibrary\steamapps\common\CDTextureOverlayBuilder_HOLD\Crimson Desert\
+
+Use this before installing more mods with another mod manager.
+
+Important:
+
+Do not launch the game while the texture pack is on Hold unless you intentionally want to test the game without the texture pack.
+
+
+RELEASE HOLD + REAPPLY
+------------------------------------------------------------
+
+Restores the texture overlay after using another mod manager.
+
+This button:
+
+1. Reads the master registry.
+2. Finds overlays currently stored in the HOLD location.
+3. Moves them back into the Crimson Desert game folder.
+4. Reads the current meta files, including any changes made by other mod managers.
+5. Reinjects only this texture pack's entries into meta/0.pathc.
+6. Rebuilds meta/0.papgt with all currently active overlays.
+7. Preserves other installed mods whenever possible.
+
+Use this after installing more mods with DMM, CDUMM, or another manager.
+
+Recommended workflow:
+
+1. Smart Hold Overlays
+2. Install more mods with another manager
+3. Release Hold + Reapply
+4. Launch the game
+
+
+REAPPLY REGISTRY
+------------------------------------------------------------
+
+Reapplies the texture overlay from the registry without rebuilding all PAZ files.
+
+Use this if:
+- another mod manager changed meta/0.pathc or meta/0.papgt,
+- the overlay folders are still inside the game folder,
+- you want to reinsert KhainOneHDTexture into the current meta files.
+
+This is faster than rebuilding the texture pack from scratch.
+
+This button does not recreate the DDS overlay archives. It only reapplies registry/manifest data to the current meta files.
+
+
+REGISTRY STATUS
+------------------------------------------------------------
+
+Shows the current status of the master registry.
+
+Use this to check:
+- whether KhainOneHDTexture is registered,
+- which overlay folders belong to the texture pack,
+- whether overlays are active,
+- whether overlays are currently on Hold,
+- whether the registry needs repair.
+
+This is useful for troubleshooting.
+
+
+REPAIR REGISTRY FROM MANIFEST
+------------------------------------------------------------
+
+Use this if the overlay folders exist but the registry is missing or broken.
+
+This button lets you select a manifest.json generated by a previous build.
+
+The tool uses that manifest to rebuild the master registry.
+
+Use cases:
+- You updated from an older version of the tool.
+- The registry file was deleted.
+- The texture overlays exist but Hold/Reapply does not know which folders belong to the mod.
+
+Normally, users do not need this unless troubleshooting.
+
+
+RESTORE LATEST META BACKUP
+------------------------------------------------------------
+
+Restores the latest backed up meta files.
+
+This can help if:
+- the game crashes after applying mods,
+- meta/0.pathc or meta/0.papgt was corrupted,
+- you want to revert the most recent meta change.
+
+Use with caution.
+
+Restoring a backup may remove changes made by mods installed after that backup was created.
+
+
+EN / ES LANGUAGE BUTTON
+------------------------------------------------------------
+
+Switches the main UI text between English and Spanish.
+
+The core logs may still include some technical terms, but the main interface changes language.
+
+
+============================================================
+INTERNAL FOLDERS CREATED BY THE TOOL
+============================================================
+
+
+CDTextureOverlayBuilder
+------------------------------------------------------------
+
+Created inside the Crimson Desert folder.
+
+Example:
+
+Crimson Desert\CDTextureOverlayBuilder\
+
+This folder stores:
+- backups,
+- cache,
+- manifests,
+- reports,
+- registry data.
+
+
+backups
+------------------------------------------------------------
+
+Stores backups of meta/0.pathc and meta/0.papgt.
+
+The tool keeps a limited number of backups automatically.
+
+
+cache
+------------------------------------------------------------
+
+Stores the PAMT index cache.
+
+This makes future scans faster because the tool does not need to fully rescan every PAMT file each time.
+
+
+manifests
+------------------------------------------------------------
+
+Stores copies of generated manifest files.
+
+The manifest tells the tool:
+- which textures were applied,
+- which overlay folders were created,
+- which internal game paths were replaced,
+- what belongs to this texture pack.
+
+
+reports
+------------------------------------------------------------
+
+Stores human-readable install reports.
+
+Reports show:
+- matched textures,
+- skipped textures,
+- ambiguous textures,
+- conflicts,
+- overlays created,
+- total time.
+
+
+texture_overlay_registry.json
+------------------------------------------------------------
+
+Master registry file.
+
+This is very important.
+
+It tells the tool which overlay folders belong to KhainOneHDTexture.
+
+Do not delete this file unless you know what you are doing.
+
+
+CDTextureOverlayBuilder_HOLD
+------------------------------------------------------------
+
+Created outside the Crimson Desert game folder, usually inside:
+
+SteamLibrary\steamapps\common\
+
+This folder stores texture overlay folders temporarily when Smart Hold is active.
+
+
+============================================================
+RECOMMENDED INSTALLATION WORKFLOW
+============================================================
+
+1. Install other mods first using your preferred mod manager.
+
+2. Run:
+
+CD_Texture_Overlay_Builder.exe
+
+3. Auto detect or manually select the Crimson Desert game folder.
+
+4. Select the DDS texture folder.
+
+5. Select:
+
+0000 - Object textures
+
+6. Leave default options enabled.
+
+7. Click:
+
+Build / Apply Overlay
+
+8. Wait for DONE.
+
+9. Launch the game and test.
+
+
+============================================================
+RECOMMENDED WORKFLOW WHEN ADDING MORE MODS LATER
+============================================================
+
+1. Run:
+
+CD_Texture_Overlay_Builder.exe
+
+2. Click:
+
+Smart Hold Overlays
+
+3. Install your additional mods with your preferred mod manager.
+
+4. Run:
+
+CD_Texture_Overlay_Builder.exe
+
+5. Click:
+
+Release Hold + Reapply
+
+6. Launch the game and test.
+
+
+============================================================
+IMPORTANT NOTES
+============================================================
+
+- Original game PAZ archives are not directly repacked.
+- The tool creates separate overlay folders.
+- The game meta files are updated so the overlays can load.
+- Always install other mods first, then apply the texture pack last.
+- If another mod manager changes meta files later, use Release Hold + Reapply or Reapply Registry.
+- Do not delete CDTextureOverlayBuilder or CDTextureOverlayBuilder_HOLD unless you want to remove registry/backup/hold data.
+- Keep backups when testing new mod combinations.
+- If something goes wrong, use Restore Latest Meta Backup or repair using the saved manifest.
+
+
+============================================================
+TROUBLESHOOTING
+============================================================
+
+
+THE GAME FOLDER WAS NOT DETECTED
+------------------------------------------------------------
+
+Use Browse and manually select:
+
+Crimson Desert
+
+
+TEXTURES ARE NOT CHANGING IN-GAME
+------------------------------------------------------------
+
+Try:
+
+1. Make sure Apply to Game was enabled.
+2. Make sure the correct Source PAMT / Type was selected.
+3. Use Reapply Registry.
+4. Check if another mod manager overwrote meta files.
+5. Use Release Hold + Reapply.
+
+
+OTHER MOD MANAGER REMOVED MY TEXTURE MOD
+------------------------------------------------------------
+
+Run:
+
+CD_Texture_Overlay_Builder.exe
+
+Then click:
+
+Release Hold + Reapply
+
+or:
+
+Reapply Registry
+
+
+SMART HOLD SAYS NO REGISTERED OVERLAYS
+------------------------------------------------------------
+
+Use:
+
+Registry Status
+
+If registry is missing, use:
+
+Repair Registry From Manifest
+
+Then select the manifest.json from your latest successful build.
+
+
+I WANT TO REMOVE THE TEXTURE PACK
+------------------------------------------------------------
+
+Use Smart Hold Overlays to move the texture overlays out of the game folder.
+
+Then use your preferred manager or restore a clean meta backup if needed.
+
+For a full manual removal, remove the registered overlay folders and restore meta files from backup.
+
+
+============================================================
+CREDITS / THIRD-PARTY NOTICE
+============================================================
+
+Portions of this project include modified/adapted code and research based on parts of:
+
+CDUMM - Crimson Desert Ultimate Mods Manager
+by faisalkindi
+MIT License
+https://github.com/faisalkindi/CrimsonDesert-UltimateModsManager
+
+Additional overlay workflow, registry system, Smart Hold/Reapply system, UI redesign, optimization work, and texture overlay implementation were modified and expanded for KhainOneHDTexture.

@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# Build outputs
+build/
+dist/
+*.spec
+*.log
+
+# Generated native helper binaries
+/tools/*.exe
+/tools/*.dll
+
+# Release archives / checksums
+*.zip
+*.7z
+*.rar
+*.sha256
+SHA256SUMS.txt
+
+# Local game/mod data
+CDTextureOverlayBuilder/
+CDTextureOverlayBuilder_HOLD/
+CDTextureOverlayBuilder_REMOVED/
+*.paz
+*.pamt
+*.pathc
+*.papgt
+*.dds
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
