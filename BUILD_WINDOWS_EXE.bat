@@ -21,10 +21,6 @@ set "PY_CMD="
 echo Searching for Python 3.12 / 3.11...
 echo.
 
-rem ------------------------------------------------------------
-rem Prefer fixed common Python install paths first.
-rem ------------------------------------------------------------
-
 call :CheckPython "C:\Program Files\Python312\python.exe"
 if defined PY_CMD goto :PY_FOUND
 
@@ -36,10 +32,6 @@ if defined PY_CMD goto :PY_FOUND
 
 call :CheckPython "%LocalAppData%\Programs\Python\Python311\python.exe"
 if defined PY_CMD goto :PY_FOUND
-
-rem ------------------------------------------------------------
-rem Try py launcher if available.
-rem ------------------------------------------------------------
 
 where py >nul 2>nul
 if not errorlevel 1 (
@@ -55,10 +47,6 @@ if not errorlevel 1 (
         goto :PY_FOUND
     )
 )
-
-rem ------------------------------------------------------------
-rem Try all python.exe entries in PATH.
-rem ------------------------------------------------------------
 
 for /f "delims=" %%P in ('where python 2^>nul') do (
     if not defined PY_CMD (
@@ -80,13 +68,11 @@ echo.
 pause
 exit /b 1
 
-
 :PY_FOUND
 echo Found Python:
 %PY_CMD% --version
 echo.
 
-rem Reject Python 3.14 explicitly.
 %PY_CMD% -c "import sys; raise SystemExit(1 if sys.version_info[:2] >= (3,14) else 0)" >nul 2>nul
 if errorlevel 1 (
     echo ERROR: This build script detected Python 3.14 or newer.
@@ -104,9 +90,13 @@ if not exist "%ENTRY%" (
     exit /b 1
 )
 
-rem ------------------------------------------------------------
-rem Check existing venv. Delete it if it was created with wrong Python.
-rem ------------------------------------------------------------
+if not exist "src\cdumm" (
+    echo ERROR: src\cdumm folder was not found.
+    echo The compiled app needs this package included.
+    echo.
+    pause
+    exit /b 1
+)
 
 if exist "%VENV_DIR%\Scripts\python.exe" (
     echo Checking existing virtual environment...
@@ -153,10 +143,6 @@ if exist "requirements_overlay_builder.txt" (
     if errorlevel 1 goto :FAIL
 )
 
-rem ------------------------------------------------------------
-rem Try to build native C helper if missing.
-rem ------------------------------------------------------------
-
 echo.
 echo Checking native hash helper...
 
@@ -191,42 +177,25 @@ if exist "tools\cd_hashlittle_native.exe" (
     echo For release builds, compile tools\cd_hashlittle_native.exe first.
 )
 
-rem ------------------------------------------------------------
-rem Clean old build output.
-rem ------------------------------------------------------------
-
 echo.
 echo Cleaning old build/dist folders...
 
 if exist "build" rmdir /s /q "build"
 if exist "dist" rmdir /s /q "dist"
 
-rem ------------------------------------------------------------
-rem Build ONEDIR / windowed / no UPX.
-rem ------------------------------------------------------------
-
 echo.
 echo Building with PyInstaller ONEDIR, windowed, no UPX...
+echo Including local src\cdumm package...
 echo.
 
+set "COMMON_PYI_FLAGS=--noconfirm --clean --onedir --windowed --noupx --name %APP_NAME% --paths src --collect-submodules cdumm --collect-data cdumm"
+
 if exist "tools\cd_hashlittle_native.exe" (
-    "%VENV_PY%" -m PyInstaller ^
-        --noconfirm ^
-        --clean ^
-        --onedir ^
-        --windowed ^
-        --noupx ^
-        --name "%APP_NAME%" ^
+    "%VENV_PY%" -m PyInstaller %COMMON_PYI_FLAGS% ^
         --add-data "tools\cd_hashlittle_native.exe;tools" ^
         "%ENTRY%"
 ) else (
-    "%VENV_PY%" -m PyInstaller ^
-        --noconfirm ^
-        --clean ^
-        --onedir ^
-        --windowed ^
-        --noupx ^
-        --name "%APP_NAME%" ^
+    "%VENV_PY%" -m PyInstaller %COMMON_PYI_FLAGS% ^
         "%ENTRY%"
 )
 
@@ -241,10 +210,6 @@ if not exist "%DIST_DIR%\%APP_NAME%.exe" (
     pause
     exit /b 1
 )
-
-rem ------------------------------------------------------------
-rem Copy public documentation/license files into release folder.
-rem ------------------------------------------------------------
 
 echo.
 echo Copying documentation files...
@@ -263,15 +228,10 @@ for %%F in (
     if exist "%%F" copy /y "%%F" "%DIST_DIR%\" >nul
 )
 
-rem Copy helper next to exe too, for extra compatibility.
 if exist "tools\cd_hashlittle_native.exe" (
     if not exist "%DIST_DIR%\tools" mkdir "%DIST_DIR%\tools"
     copy /y "tools\cd_hashlittle_native.exe" "%DIST_DIR%\tools\" >nul
 )
-
-rem ------------------------------------------------------------
-rem Generate SHA256SUMS.txt.
-rem ------------------------------------------------------------
 
 echo.
 echo Generating SHA256SUMS.txt...
@@ -290,14 +250,14 @@ echo.
 echo Final folder:
 echo %CD%\%DIST_DIR%
 echo.
-echo Important:
+echo IMPORTANT:
+echo Run the EXE from the dist\%APP_NAME% folder only.
 echo Upload the FULL folder as a ZIP.
-echo Do NOT upload only %APP_NAME%.exe
+echo Do NOT upload only %APP_NAME%.exe.
 echo The _internal folder is required.
 echo.
 pause
 exit /b 0
-
 
 :CheckPython
 set "CAND=%~1"
@@ -309,7 +269,6 @@ if not errorlevel 1 (
     set "PY_CMD="%CAND%""
 )
 exit /b 0
-
 
 :FAIL
 echo.
