@@ -36,6 +36,19 @@ CDTextureOverlayBuilder_REMOVED/
 *.papgt
 *.dds
 
+# Extra generated files
+*.tmp
+*.bak
+*.old
+*.backup
+*.manifest
+*.json.bak
+
+# Python packaging
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
 # IDE / OS
 .vscode/
 .idea/
