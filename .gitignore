@@ -1,53 +1,24 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.venv/
-venv/
-env/
-.pytest_cache/
-.mypy_cache/
-
-# Build outputs
-build/
+# .NET build output
+bin/
+obj/
+publish/
 dist/
-*.spec
-*.log
+*.user
+.vs/
 
-# Generated native helper binaries
-/tools/*.exe
-/tools/*.dll
+# Runtime plugin build output (built by Runtime\build.bat)
+Runtime/bin/
+Runtime/obj/
 
-# Release archives / checksums
-*.zip
-*.7z
-*.rar
-*.sha256
-SHA256SUMS.txt
+# Fonts extracted from Noto_Sans.zip at build time
+Resources/Fonts/*.ttf
 
 # Local game/mod data
-CDTextureOverlayBuilder/
-CDTextureOverlayBuilder_HOLD/
-CDTextureOverlayBuilder_REMOVED/
 *.paz
 *.pamt
 *.pathc
 *.papgt
-*.dds
-
-# Extra generated files
-*.tmp
-*.bak
-*.old
-*.backup
-*.manifest
-*.json.bak
-
-# Python packaging
-*.egg-info/
-.eggs/
-pip-wheel-metadata/
+*.log
 
 # IDE / OS
 .vscode/

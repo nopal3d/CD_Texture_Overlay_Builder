@@ -1,45 +1,40 @@
-name: Build Windows ONEDIR
+name: Build Windows
 
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
+  pull_request:
 
 jobs:
   build:
     runs-on: windows-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
         with:
-          python-version: '3.12'
-          architecture: 'x64'
+          dotnet-version: '8.0.x'
 
-      - name: Build native helper
+      - name: Prepare fonts
         shell: cmd
-        run: BUILD_NATIVE_C_HELPER.bat
+        run: call PREPARE_NOTO_SANS_WINDOWS.bat
 
-      - name: Test native helper
+      - name: Build and test runtime plugin
         shell: cmd
-        run: TEST_FAST_HASH_HELPER.bat
+        run: call Runtime\build.bat test
 
-      - name: Build PyInstaller ONEDIR
+      - name: Publish EXE
         shell: cmd
-        run: BUILD_WINDOWS_EXE.bat
-
-      - name: Package release zip
-        shell: cmd
-        run: PACKAGE_RELEASE_ZIP.bat
+        run: dotnet publish HDOverlayBuilder.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:DebugType=none -p:DebugSymbols=false -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=false -o publish
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CD_Texture_Overlay_Builder_Windows_ONEDIR
+          name: HD_Overlay_Builder_Windows
           path: |
-            CD_Texture_Overlay_Builder_v1.2.5_Portable_ONEDIR.zip
-            CD_Texture_Overlay_Builder_v1.2.5_Portable_ONEDIR.zip.sha256
-            dist/CD_Texture_Overlay_Builder/SHA256SUMS.txt
+            publish/HD Overlay Builder.exe
+            README.md
+            THIRD_PARTY_NOTICES.md

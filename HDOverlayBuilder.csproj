@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>HD Overlay Builder</AssemblyName>
+    <RootNamespace>CDTextureOverlayBuilder</RootNamespace>
+    <Version>1.5.0</Version>
+    <FileVersion>1.5.0.0</FileVersion>
+    <AssemblyVersion>1.5.0.0</AssemblyVersion>
+    <AssemblyInformationalVersion>1.5.0</AssemblyInformationalVersion>
+    <Authors>Khain / .NET Port by Burstahh</Authors>
+    <Company>Khain / .NET Port by Burstahh</Company>
+    <Copyright>Khain / .NET Port by Burstahh</Copyright>
+    <Product>HD Overlay Builder</Product>
+    <Description>Crimson Desert HD texture overlay builder and update manager</Description>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ApplicationIcon>Resources\CDTOB.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\CDTOB.ico" LogicalName="CDTOB.ico" />
+  </ItemGroup>
+
+  <!-- Game 2.04+ runtime plugin (built by Runtime\build.bat). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Runtime\bin\CDHDRuntime.asi" LogicalName="CDTextureOverlayBuilder.Runtime.CDHDRuntime.asi" Condition="Exists('Runtime\bin\CDHDRuntime.asi')" />
+    <!-- MIT-licensed helpers (licenses in Resources\ThirdParty and THIRD_PARTY_NOTICES.md). -->
+    <EmbeddedResource Include="Resources\ThirdParty\texconv.exe" LogicalName="CDTextureOverlayBuilder.ThirdParty.texconv.exe" Condition="Exists('Resources\ThirdParty\texconv.exe')" />
+    <EmbeddedResource Include="Resources\ThirdParty\UltimateASILoader_x64.dll" LogicalName="CDTextureOverlayBuilder.ThirdParty.UltimateASILoader_x64.dll" Condition="Exists('Resources\ThirdParty\UltimateASILoader_x64.dll')" />
+    <Compile Remove="Runtime\**" />
+    <None Remove="Runtime\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Fonts\NotoSans-Regular.ttf" LogicalName="Fonts.NotoSans-Regular.ttf" Condition="Exists('Resources\Fonts\NotoSans-Regular.ttf')" />
+    <EmbeddedResource Include="Resources\Fonts\NotoSans-Bold.ttf" LogicalName="Fonts.NotoSans-Bold.ttf" Condition="Exists('Resources\Fonts\NotoSans-Bold.ttf')" />
+    <EmbeddedResource Include="Resources\Fonts\NotoSans-Italic.ttf" LogicalName="Fonts.NotoSans-Italic.ttf" Condition="Exists('Resources\Fonts\NotoSans-Italic.ttf')" />
+    <EmbeddedResource Include="Resources\Fonts\NotoSans-BoldItalic.ttf" LogicalName="Fonts.NotoSans-BoldItalic.ttf" Condition="Exists('Resources\Fonts\NotoSans-BoldItalic.ttf')" />
+    <None Include="Resources\Fonts\README_NOTO_SANS.txt" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" Condition="Exists('Resources\Fonts\README_NOTO_SANS.txt')" />
+    <None Include="Resources\Fonts\OFL_NOTO_SANS.txt" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" Condition="Exists('Resources\Fonts\OFL_NOTO_SANS.txt')" />
+  </ItemGroup>
+</Project>
