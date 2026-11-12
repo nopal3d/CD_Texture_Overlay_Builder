@@ -24,7 +24,7 @@ jobs:
 
       - name: Build and test runtime plugin
         shell: cmd
-        run: call Runtime\build.bat test
+        run: call Runtime\test\run_test.bat
 
       - name: Publish EXE
         shell: cmd
