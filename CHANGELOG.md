@@ -13,6 +13,9 @@ Runtime mode (game 2.04/2.05) texture fixes.
 - ATI1/ATI2 FourCCs are written as BC4U/BC5U, as the game uses.
 - Textures with a mip chain shorter than full (often 1 mip) are given a full chain
   with texconv, which removes the shimmering/moire at distance.
+- Re-encode step is about 9x faster: files go to texconv in batches of 32 and the
+  batches run in parallel (one single-threaded texconv per core). Output is
+  byte-identical; progress shows RE-ENCODE n/total.
 - Engine texture cache stamp bumped (v2), so the next Easy Apply converts again.
 - Verified on game 2.05.
 
