@@ -28,7 +28,7 @@
 #include <atomic>
 #include <mutex>
 
-#define CDHD_VERSION "CDHD Runtime 1.0.0"
+#define CDHD_VERSION "CDHD Runtime 1.0.1"
 static const int kManifestVersion = 1;
 
 // ---------------------------------------------------------------- globals used by hooks.asm
@@ -458,6 +458,43 @@ static uint64_t* MakeFakeVtable(uint8_t* col, const uint64_t* entries, int count
     return block + 1;
 }
 
+static uint64_t* g_pkgVtable = nullptr;
+
+// Name of the module that contains an address ("" when none).
+static std::string ModuleOf(void* addr)
+{
+    HMODULE mod = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            (LPCWSTR)addr, &mod) || !mod)
+        return "";
+    wchar_t path[MAX_PATH] = {};
+    GetModuleFileNameW(mod, path, MAX_PATH);
+    std::wstring w(path);
+    size_t cut = w.find_last_of(L"\\/");
+    return WideToUtf8(cut == std::wstring::npos ? w : w.substr(cut + 1));
+}
+
+// Logs once if another plugin re-hooks the pack reader after us (it then sees requests first).
+static DWORD WINAPI WatchForOtherHooks(void*)
+{
+    static const int slots[] = { 2, 3, 4, 5, 6, 10, 11, 12, 13 };
+    uint64_t mine[16] = {};
+    for (int s : slots) mine[s] = g_pkgVtable[s];
+    bool warned[16] = {};
+    for (int round = 0; round < 12; ++round) {          // first 2 minutes
+        Sleep(10000);
+        for (int s : slots) {
+            uint64_t now = g_pkgVtable[s];
+            if (now != mine[s] && !warned[s]) {
+                warned[s] = true;
+                Log("WARNING: pack reader slot %d was re-hooked after CDHD by %s; it is asked before CDHD. "
+                    "Textures it also serves come from it, not from this build.", s, ModuleOf((void*)now).c_str());
+            }
+        }
+    }
+    return 0;
+}
+
 static bool InstallHooks()
 {
     uint8_t* image = (uint8_t*)GetModuleHandleW(nullptr);
@@ -480,6 +517,15 @@ static bool InstallHooks()
         (unsigned long long)((uint8_t*)base.vtable - image), (unsigned long long)((uint8_t*)pkg.vtable - image));
 
     for (int i = 0; i < 14; ++i) { g_origBase[i] = base.vtable[i]; g_origPkg[i] = pkg.vtable[i]; }
+    // Another runtime plugin (DMM's DmmRuntime.asi, a second copy of this one...) that got
+    // here first shows up as pack reader slots that point outside the game exe.
+    for (int i = 2; i < 14; ++i) {
+        std::string owner = ModuleOf((void*)pkg.vtable[i]);
+        if (!owner.empty() && owner != ModuleOf(image))
+            Log("WARNING: pack reader slot %d was already hooked by %s. If it serves the same textures, "
+                "whichever plugin is outermost wins; remove the textures from the other tool.", i, owner.c_str());
+    }
+    g_pkgVtable = pkg.vtable;
 
     // Fake resource map: answers "where is this file" for served paths.
     uint64_t mapEntries[11] = {
@@ -520,6 +566,7 @@ static bool InstallHooks()
         }
     }
     Log("serving: the game's pack reader asks the CDHD list first");
+    if (HANDLE h = CreateThread(nullptr, 0, &WatchForOtherHooks, nullptr, 0, nullptr)) CloseHandle(h);
     return true;
 }
 

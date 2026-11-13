@@ -414,6 +414,63 @@ public static class RuntimeInstaller
         return results.ToList();
     }
 
+    // ------------------------------------------------------------------ other runtime plugins
+    /// <summary>
+    /// Finds other runtime file servers in bin64 (DMM 4.8+ DmmRuntime.asi, stray copies of
+    /// CDHDRuntime.asi in plugin folders) and the textures they serve that this build also
+    /// serves. Both plugins hook the same pack reader, so for a shared path only one wins,
+    /// and the other tool may serve an unconverted file (e.g. BC7 where the game uses BC1).
+    /// </summary>
+    private static List<string> CheckOtherRuntimes(string gameDir, IEnumerable<string> ourTargets, Action<string> log)
+    {
+        var lines = new List<string>();
+        string bin64 = Bin64(gameDir);
+        foreach (string sub in new[] { "", "plugins", "scripts", "update" })
+        {
+            string dir = sub.Length == 0 ? bin64 : Path.Combine(bin64, sub);
+            if (!Directory.Exists(dir)) continue;
+            foreach (var asi in Directory.EnumerateFiles(dir, "*.asi"))
+            {
+                string name = Path.GetFileName(asi);
+                string rel = sub.Length == 0 ? name : $"{sub}\\{name}";
+                if (sub.Length == 0 && name.Equals(AsiFileName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (name.Equals(AsiFileName, StringComparison.OrdinalIgnoreCase))
+                    lines.Add($"bin64\\{rel}: second copy of the CDHD plugin; delete it (both copies would hook the game).");
+                else if (name.Contains("DmmRuntime", StringComparison.OrdinalIgnoreCase))
+                    lines.Add($"bin64\\{rel}: DMM's runtime plugin (serves the mods mounted in DMM).");
+            }
+        }
+        string dmmManifest = Path.Combine(bin64, "dmm", "manifest.tsv");
+        if (File.Exists(dmmManifest))
+        {
+            var ours = new HashSet<string>(ourTargets.Select(t => OverlayBuilder.Norm(t)), StringComparer.OrdinalIgnoreCase);
+            var shared = new List<string>();
+            try
+            {
+                foreach (var raw in File.ReadLines(dmmManifest))
+                {
+                    var f = raw.Split('\t');
+                    if (f.Length >= 2 && f[0] == "file" && ours.Contains(OverlayBuilder.Norm(f[1]))) shared.Add(f[1]);
+                }
+            }
+            catch (Exception ex) { lines.Add($"bin64\\dmm\\manifest.tsv could not be read: {ex.Message}"); }
+            if (shared.Count > 0)
+            {
+                lines.Add($"{shared.Count} texture(s) of this build are ALSO served by DMM (bin64\\dmm\\manifest.tsv). " +
+                          "Only one plugin wins for each; if DMM serves its copy unconverted it can show stripes or black. " +
+                          "Unmount/disable the texture pack in DMM and keep it only in HD Overlay Builder.");
+                lines.AddRange(shared.Take(200).Select(x => "  " + x));
+                if (shared.Count > 200) lines.Add($"  ... and {shared.Count - 200} more");
+            }
+        }
+        if (lines.Count > 0)
+        {
+            log("WARNING: another runtime file server is installed in bin64:");
+            foreach (var x in lines.Where(l => !l.StartsWith("  ")).Take(6)) log("  " + x);
+        }
+        return lines;
+    }
+
     // ------------------------------------------------------------------ plugin + loader
     public static string? FindAsiLoader(string gameDir)
     {
@@ -665,6 +722,7 @@ public static class RuntimeInstaller
         OverlayService.SafeWrite(ManifestPath(gameDir), new UTF8Encoding(false).GetBytes(sb.ToString()));
         log($"Runtime manifest written: bin64\\{DataDirName}\\manifest.tsv ({served.Count} texture(s)).");
         EnsureAsiLoader(gameDir, log);
+        var otherRuntimes = CheckOtherRuntimes(gameDir, served.Select(m => m.FullPath), log);
 
         if (formatMismatch.Count > 0)
         {
@@ -694,6 +752,7 @@ public static class RuntimeInstaller
         Section("NOT FORMAT-CHECKED", unknownFormat);
         Section("INVALID PATH", badPath);
         Section("CONVERSION FAILED", convertFailed);
+        Section("OTHER RUNTIME PLUGINS / TEXTURES ALSO SERVED BY ANOTHER TOOL", otherRuntimes);
         Section("RE-ENCODED TO THE GAME'S FORMAT (texconv)", reencoded);
         rep.AppendLine();
         rep.AppendLine("== SERVED ==");

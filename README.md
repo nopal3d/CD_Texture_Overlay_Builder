@@ -38,6 +38,17 @@ switches to **runtime mode** automatically:
 - Diagnostics: `bin64\cdhd\CDHDRuntime.log`. Create an empty `verbose` file in
   `bin64\cdhd` to log every texture served.
 
+### Striped or black textures on 2.04+
+
+- Install the pack with HD Overlay Builder only. If the same textures are also
+  mounted in DMM (or another tool that serves files at runtime), only one copy
+  reaches the game, and an unconverted copy (for example BC7 where the game uses
+  BC1) shows stripes. Easy Apply warns when `bin64\DmmRuntime.asi` serves textures
+  from this build; unmount the texture pack in DMM.
+- Keep only one `CDHDRuntime.asi` (in `bin64`, not also in `plugins` or `scripts`).
+- `bin64\cdhd\CDHDRuntime.log` shows `WARNING: pack reader slot ... hooked by ...`
+  when another plugin is in the way.
+
 See [`Runtime/README.md`](Runtime/README.md) for how the plugin works.
 
 ## What it does

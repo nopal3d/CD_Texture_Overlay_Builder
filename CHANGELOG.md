@@ -16,6 +16,13 @@ Runtime mode (game 2.04/2.05) texture fixes.
 - Re-encode step is about 9x faster: files go to texconv in batches of 32 and the
   batches run in parallel (one single-threaded texconv per core). Output is
   byte-identical; progress shows RE-ENCODE n/total.
+- Detects other runtime file servers: DMM 4.8+ (`DmmRuntime.asi` and
+  `bin64\dmm\manifest.tsv`) and stray copies of `CDHDRuntime.asi` in plugin
+  folders. Textures served by both tools are listed in the log and report. Packs
+  that ship BC7 where the game uses BC1/BC3 (rocks, cliffs) show stripes when
+  another tool serves them unconverted.
+- CDHD Runtime 1.0.1 logs a WARNING when another plugin hooked the game's pack
+  reader before it, or re-hooks it later, and names that DLL.
 - Engine texture cache stamp bumped (v2), so the next Easy Apply converts again.
 - Verified on game 2.05.
 
