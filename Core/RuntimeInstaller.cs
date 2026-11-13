@@ -53,7 +53,7 @@ public static class RuntimeInstaller
         var result = new System.Collections.Concurrent.ConcurrentDictionary<MatchedFile, string>();
         var newIndex = new System.Collections.Concurrent.ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var fails = new System.Collections.Concurrent.ConcurrentBag<string>();
-        int done = 0, reused = 0, converted = 0;
+        int done = 0, reused = 0, converted = 0, dx10Fixed = 0;
         Parallel.ForEach(served, new ParallelOptions { MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 1, 6), CancellationToken = ct }, m =>
         {
             string target = OverlayBuilder.Norm(m.FullPath);
@@ -62,14 +62,15 @@ public static class RuntimeInstaller
             {
                 var src = new FileInfo(m.SourcePath);
                 uint code = last4.TryGetValue(m, out var c) ? c : 0;
-                string stamp = $"{src.FullName}|{src.Length}|{src.LastWriteTimeUtc.Ticks}|{code}|v1";
+                string stamp = $"{src.FullName}|{src.Length}|{src.LastWriteTimeUtc.Ticks}|{code}|v2";
                 if (oldIndex.TryGetValue(target, out var old) && old == stamp && File.Exists(dst))
                 {
                     Interlocked.Increment(ref reused);
                 }
                 else
                 {
-                    byte[] content = File.ReadAllBytes(src.FullName);
+                    byte[] content = DdsTools.ToLegacyHeader(File.ReadAllBytes(src.FullName), out bool legacy);
+                    if (legacy) Interlocked.Increment(ref dx10Fixed);
                     var (partial, _) = DdsTools.BuildPartialPayload(content);
                     byte[] buf = new byte[Math.Max(content.Length, partial.Length)];
                     Buffer.BlockCopy(partial, 0, buf, 0, partial.Length);
@@ -95,6 +96,7 @@ public static class RuntimeInstaller
             if (!keep.Contains(f)) { try { File.Delete(f); removed++; } catch { } }
         File.WriteAllLines(TextureCacheIndex(gameDir), newIndex.OrderBy(k => k.Key).Select(k => $"{k.Key}\t{k.Value}"));
         log($"Engine-format textures: {converted} converted, {reused} reused, {removed} stale removed (bin64\\{DataDirName}\\textures).");
+        if (dx10Fixed > 0) log($"Headers rewritten to the game's DX9 header (DX10 or ATI1/ATI2): {dx10Fixed} (block data unchanged).");
         failed = fails.ToList();
         return new Dictionary<MatchedFile, string>(result);
     }
@@ -216,12 +218,13 @@ public static class RuntimeInstaller
 
     private enum FormatCheck { Same, Different, Unknown }
 
-    private static FormatCheck CompareFormats(PazEntry? game, string sourcePath, out string detail) => CompareFormats(game, sourcePath, out detail, out _, out _);
+    private static FormatCheck CompareFormats(PazEntry? game, string sourcePath, out string detail) => CompareFormats(game, sourcePath, out detail, out _, out _, out _);
 
-    private static FormatCheck CompareFormats(PazEntry? game, string sourcePath, out string detail, out uint gameLast4, out string? gameFamily)
+    private static FormatCheck CompareFormats(PazEntry? game, string sourcePath, out string detail, out uint gameLast4, out string? gameFamily, out uint gameMips)
     {
         detail = "";
         gameLast4 = 0;
+        gameMips = 0;
         gameFamily = null;
         string? modFmt = null, gameFmt = null;
         try { modFmt = DdsFormatFamily(ReadHead(sourcePath, 0, 148)); } catch (Exception ex) { detail = $"cannot read source DDS: {ex.Message}"; return FormatCheck.Unknown; }
@@ -231,13 +234,33 @@ public static class RuntimeInstaller
         {
             byte[] gh = ReadHead(game.PazFile, game.Offset, 148);
             gameFmt = DdsFormatFamily(gh);
-            if (gh.Length >= 128) gameLast4 = BinaryUtil.U32(gh, 124);
+            if (gh.Length >= 128) { gameLast4 = BinaryUtil.U32(gh, 124); gameMips = Math.Max(1u, BinaryUtil.U32(gh, 28)); }
         }
         catch { }
         if (gameFmt == null) { detail = $"game header unreadable (mod {modFmt})"; return FormatCheck.Unknown; }
         gameFamily = gameFmt;
         detail = $"game {gameFmt}, mod {modFmt}";
         return gameFmt == modFmt ? FormatCheck.Same : FormatCheck.Different;
+    }
+
+    /// <summary>True when the DDS has fewer mips than its full chain down to 4x4 blocks.</summary>
+    private static bool MissingMips(string path, out string detail)
+    {
+        detail = "";
+        try
+        {
+            byte[] h = ReadHead(path, 0, 128);
+            if (h.Length < 128) return false;
+            uint height = Math.Max(1, BinaryUtil.U32(h, 12)), width = Math.Max(1, BinaryUtil.U32(h, 16));
+            uint mips = BinaryUtil.U32(h, 28);
+            if ((BinaryUtil.U32(h, 8) & 0x20000) == 0 || mips == 0) mips = 1; // DDSD_MIPMAPCOUNT not set
+            uint full = 1;
+            for (uint d = Math.Max(width, height); d > 4; d >>= 1) full++; // down to 4x4 is enough for block formats
+            if (mips >= full) return false;
+            detail = $"mod has {mips} mip(s), full chain is {full} -> mipmaps rebuilt";
+            return true;
+        }
+        catch { return false; }
     }
 
     // ------------------------------------------------------------------ re-encoding (texconv)
@@ -279,24 +302,27 @@ public static class RuntimeInstaller
     };
 
     /// <summary>
-    /// Re-encodes textures whose block format differs from the game's into the game's
-    /// format with texconv, keeping their own size and mip chain. Results are cached in
-    /// bin64\cdhd\reencoded and reused while the source is unchanged.
+    /// Re-encodes textures whose block format differs from the game's (or whose mip chain
+    /// is short) into the game's format with texconv, keeping their own size. Results are
+    /// cached in bin64\cdhd\reencoded and reused while the source is unchanged.
+    /// Files are sent to texconv in batches (one process per batch) and the batches run
+    /// in parallel, one single-threaded texconv per core.
     /// </summary>
     private static List<(MatchedFile m, string? newSource, uint last4, string detail)> ReencodeToGameFormat(string gameDir,
-        List<(MatchedFile m, string family, uint last4, string detail)> items, Action<string> log, CancellationToken ct)
+        List<(MatchedFile m, string family, uint last4, string detail)> items, Action<string> log, Action<int, string>? progress, CancellationToken ct)
     {
-        var results = new List<(MatchedFile, string?, uint, string)>();
+        var results = new System.Collections.Concurrent.ConcurrentBag<(MatchedFile, string?, uint, string)>();
         string? texconv = FindTexconv();
         if (texconv == null)
         {
             log($"NOTICE: {items.Count} texture(s) need re-encoding to the game's format, but texconv.exe was not found. " +
                 "This build does not bundle texconv; put texconv.exe next to HD Overlay Builder.exe (github.com/microsoft/DirectXTex/releases) and apply again.");
             foreach (var it in items) results.Add((it.m, null, it.last4, it.detail + " (texconv.exe not found)"));
-            return results;
+            return results.ToList();
         }
         string root = ReencodeCacheDir(gameDir);
-        int converted = 0, reused = 0;
+        int reused = 0;
+        var pending = new List<(MatchedFile m, string family, uint last4, string detail, string fmt, string outDir, string outFile, string stamp)>();
         foreach (var it in items)
         {
             ct.ThrowIfCancellationRequested();
@@ -304,47 +330,145 @@ public static class RuntimeInstaller
             string target = OverlayBuilder.Norm(it.m.FullPath);
             string outDir = Path.Combine(root, Path.GetDirectoryName(target.Replace('/', Path.DirectorySeparatorChar)) ?? "");
             string outFile = Path.Combine(outDir, Path.GetFileName(it.m.SourcePath));
-            var src = new FileInfo(it.m.SourcePath);
-            string stampFile = outFile + ".src";
-            string stamp = $"{src.FullName}|{src.Length}|{src.LastWriteTimeUtc.Ticks}|{fmt}|v1";
             try
             {
-                if (File.Exists(outFile) && File.Exists(stampFile) && File.ReadAllText(stampFile) == stamp)
+                var src = new FileInfo(it.m.SourcePath);
+                string stamp = $"{src.FullName}|{src.Length}|{src.LastWriteTimeUtc.Ticks}|{fmt}|v2";
+                if (File.Exists(outFile) && File.Exists(outFile + ".src") && File.ReadAllText(outFile + ".src") == stamp)
                 {
                     reused++;
                     results.Add((it.m, outFile, it.last4, it.detail + $" -> {it.family}"));
                     continue;
                 }
-                Directory.CreateDirectory(outDir);
-                var args = new List<string> { "-nologo", "-y", "-f", fmt, "-o", outDir };
-                // The game's DDS headers are legacy DX9 for BC1-BC5; BC6H/BC7 need the DX10 header.
-                args.Add(it.family is "BC7" ? "-dx10" : "-dx9");
-                if (it.family == "BC1") { args.Add("-at"); args.Add("0.5"); }
-                args.Add("--");
-                args.Add(src.FullName);
-                var psi = new ProcessStartInfo(texconv) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
-                foreach (var a in args) psi.ArgumentList.Add(a);
-                using var proc = Process.Start(psi)!;
-                string stdout = proc.StandardOutput.ReadToEnd() + proc.StandardError.ReadToEnd();
-                proc.WaitForExit();
-                string? fam = File.Exists(outFile) ? DdsFormatFamily(ReadHead(outFile, 0, 148)) : null;
-                if (proc.ExitCode != 0 || fam != it.family)
-                {
-                    string why = proc.ExitCode != 0 ? $"texconv failed ({proc.ExitCode}): {stdout.Trim().Split('\n').LastOrDefault()}" : $"texconv produced {fam ?? "nothing"}";
-                    results.Add((it.m, null, it.last4, it.detail + "; " + why));
-                    continue;
-                }
-                File.WriteAllText(stampFile, stamp);
-                converted++;
-                results.Add((it.m, outFile, it.last4, it.detail + $" -> {it.family}"));
+                pending.Add((it.m, it.family, it.last4, it.detail, fmt, outDir, outFile, stamp));
             }
-            catch (Exception ex)
+            catch (Exception ex) { results.Add((it.m, null, it.last4, it.detail + "; " + ex.Message)); }
+        }
+
+        // Batch by (format, output folder); a batch never holds two files with the same name.
+        const int BatchSize = 32;
+        var batches = new List<List<int>>();
+        foreach (var grp in Enumerable.Range(0, pending.Count).GroupBy(i => (pending[i].fmt, pending[i].family, pending[i].outDir.ToLowerInvariant())))
+        {
+            var cur = new List<int>(); var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (int i in grp)
             {
-                results.Add((it.m, null, it.last4, it.detail + "; " + ex.Message));
+                if (cur.Count >= BatchSize || !names.Add(Path.GetFileName(pending[i].outFile)))
+                {
+                    batches.Add(cur); cur = new List<int>(); names.Clear(); names.Add(Path.GetFileName(pending[i].outFile));
+                }
+                cur.Add(i);
+            }
+            if (cur.Count > 0) batches.Add(cur);
+        }
+
+        int converted = 0, done = 0;
+        int workers = Math.Clamp(Environment.ProcessorCount, 1, 16);
+        var sw = Stopwatch.StartNew();
+        Parallel.ForEach(batches, new ParallelOptions { MaxDegreeOfParallelism = workers, CancellationToken = ct }, batch =>
+        {
+            var first = pending[batch[0]];
+            string stdout = "";
+            int exit = -1;
+            try
+            {
+                Directory.CreateDirectory(first.outDir);
+                foreach (int i in batch) { File.Delete(pending[i].outFile); File.Delete(pending[i].outFile + ".src"); }
+                var psi = new ProcessStartInfo(texconv) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+                foreach (var a in new[] { "-nologo", "-y", "-singleproc", "-f", first.fmt, "-m", "0", "-o", first.outDir }) psi.ArgumentList.Add(a);
+                // The game's DDS headers are legacy DX9 for BC1-BC5; BC6H/BC7 need the DX10 header.
+                psi.ArgumentList.Add(first.family is "BC7" ? "-dx10" : "-dx9");
+                if (first.family == "BC1") { psi.ArgumentList.Add("-at"); psi.ArgumentList.Add("0.5"); }
+                psi.ArgumentList.Add("--");
+                foreach (int i in batch) psi.ArgumentList.Add(Path.GetFullPath(pending[i].m.SourcePath));
+                using var proc = Process.Start(psi)!;
+                var errTask = proc.StandardError.ReadToEndAsync();
+                stdout = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit();
+                stdout += errTask.Result;
+                exit = proc.ExitCode;
+            }
+            catch (Exception ex) { stdout = ex.Message; }
+            foreach (int i in batch)
+            {
+                var p = pending[i];
+                try
+                {
+                    string? fam = File.Exists(p.outFile) ? DdsFormatFamily(ReadHead(p.outFile, 0, 148)) : null;
+                    if (fam != p.family)
+                    {
+                        string why = exit != 0 ? $"texconv failed ({exit}): {stdout.Trim().Split('\n').LastOrDefault()}" : $"texconv produced {fam ?? "nothing"}";
+                        results.Add((p.m, null, p.last4, p.detail + "; " + why));
+                        continue;
+                    }
+                    File.WriteAllText(p.outFile + ".src", p.stamp);
+                    Interlocked.Increment(ref converted);
+                    results.Add((p.m, p.outFile, p.last4, p.detail + $" -> {p.family}"));
+                }
+                catch (Exception ex) { results.Add((p.m, null, p.last4, p.detail + "; " + ex.Message)); }
+            }
+            int n = Interlocked.Add(ref done, batch.Count);
+            progress?.Invoke(45 + (int)(13.0 * n / Math.Max(1, pending.Count)), $"RE-ENCODE {n}/{pending.Count}");
+        });
+        log($"Re-encoded to the game's format with texconv: {converted} converted, {reused} reused, {workers} parallel workers, {sw.Elapsed.TotalSeconds:F0}s ({texconv}).");
+        return results.ToList();
+    }
+
+    // ------------------------------------------------------------------ other runtime plugins
+    /// <summary>
+    /// Finds other runtime file servers in bin64 (DMM 4.8+ DmmRuntime.asi, stray copies of
+    /// CDHDRuntime.asi in plugin folders) and the textures they serve that this build also
+    /// serves. Both plugins hook the same pack reader, so for a shared path only one wins,
+    /// and the other tool may serve an unconverted file (e.g. BC7 where the game uses BC1).
+    /// </summary>
+    private static List<string> CheckOtherRuntimes(string gameDir, IEnumerable<string> ourTargets, Action<string> log)
+    {
+        var lines = new List<string>();
+        string bin64 = Bin64(gameDir);
+        foreach (string sub in new[] { "", "plugins", "scripts", "update" })
+        {
+            string dir = sub.Length == 0 ? bin64 : Path.Combine(bin64, sub);
+            if (!Directory.Exists(dir)) continue;
+            foreach (var asi in Directory.EnumerateFiles(dir, "*.asi"))
+            {
+                string name = Path.GetFileName(asi);
+                string rel = sub.Length == 0 ? name : $"{sub}\\{name}";
+                if (sub.Length == 0 && name.Equals(AsiFileName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (name.Equals(AsiFileName, StringComparison.OrdinalIgnoreCase))
+                    lines.Add($"bin64\\{rel}: second copy of the CDHD plugin; delete it (both copies would hook the game).");
+                else if (name.Contains("DmmRuntime", StringComparison.OrdinalIgnoreCase))
+                    lines.Add($"bin64\\{rel}: DMM's runtime plugin (serves the mods mounted in DMM).");
             }
         }
-        log($"Re-encoded to the game's format with texconv: {converted} converted, {reused} reused ({texconv}).");
-        return results;
+        string dmmManifest = Path.Combine(bin64, "dmm", "manifest.tsv");
+        if (File.Exists(dmmManifest))
+        {
+            var ours = new HashSet<string>(ourTargets.Select(t => OverlayBuilder.Norm(t)), StringComparer.OrdinalIgnoreCase);
+            var shared = new List<string>();
+            try
+            {
+                foreach (var raw in File.ReadLines(dmmManifest))
+                {
+                    var f = raw.Split('\t');
+                    if (f.Length >= 2 && f[0] == "file" && ours.Contains(OverlayBuilder.Norm(f[1]))) shared.Add(f[1]);
+                }
+            }
+            catch (Exception ex) { lines.Add($"bin64\\dmm\\manifest.tsv could not be read: {ex.Message}"); }
+            if (shared.Count > 0)
+            {
+                lines.Add($"{shared.Count} texture(s) of this build are ALSO served by DMM (bin64\\dmm\\manifest.tsv). " +
+                          "Only one plugin wins for each; if DMM serves its copy unconverted it can show stripes or black. " +
+                          "Unmount/disable the texture pack in DMM and keep it only in HD Overlay Builder.");
+                lines.AddRange(shared.Take(200).Select(x => "  " + x));
+                if (shared.Count > 200) lines.Add($"  ... and {shared.Count - 200} more");
+            }
+        }
+        if (lines.Count > 0)
+        {
+            log("WARNING: another runtime file server is installed in bin64:");
+            foreach (var x in lines.Where(l => !l.StartsWith("  ")).Take(6)) log("  " + x);
+        }
+        return lines;
     }
 
     // ------------------------------------------------------------------ plugin + loader
@@ -526,7 +650,7 @@ public static class RuntimeInstaller
         for (int i = 0; i < matches.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
-            if (i % 200 == 0) progress?.Invoke(20 + (int)(40.0 * i / Math.Max(1, matches.Count)), $"CHECK {i}/{matches.Count}");
+            if (i % 200 == 0) progress?.Invoke(20 + (int)(25.0 * i / Math.Max(1, matches.Count)), $"CHECK {i}/{matches.Count}");
             var m = matches[i];
             string target = m.FullPath.Replace('\\', '/').Trim('/');
             string source = Path.GetFullPath(m.SourcePath);
@@ -536,7 +660,15 @@ public static class RuntimeInstaller
                 continue;
             }
             if (!seenTargets.Add(target)) continue;
-            var check = CompareFormats(index.Find(m.PamtDir, m.EntryPath), source, out string detail, out uint gameLast4, out string? gameFamily);
+            var check = CompareFormats(index.Find(m.PamtDir, m.EntryPath), source, out string detail, out uint gameLast4, out string? gameFamily, out uint gameMips);
+            // A mip chain shorter than the game's (often 1 mip from some exporters) shows
+            // shimmering stripes/moire at distance: rebuild the full chain with texconv.
+            if (check == FormatCheck.Same && gameMips > 1 && gameFamily != null && TexconvFormat(gameFamily) != null
+                && MissingMips(source, out string mipDetail))
+            {
+                check = FormatCheck.Different;
+                detail += "; " + mipDetail;
+            }
             if (check == FormatCheck.Different)
             {
                 if (gameFamily != null && TexconvFormat(gameFamily) != null) toReencode.Add((m, gameFamily, gameLast4, detail));
@@ -550,8 +682,8 @@ public static class RuntimeInstaller
 
         if (toReencode.Count > 0)
         {
-            progress?.Invoke(58, "RE-ENCODE");
-            foreach (var r in ReencodeToGameFormat(gameDir, toReencode, log, ct))
+            progress?.Invoke(45, $"RE-ENCODE 0/{toReencode.Count}");
+            foreach (var r in ReencodeToGameFormat(gameDir, toReencode, log, progress, ct))
             {
                 if (r.newSource == null) { formatMismatch.Add($"{r.m.RelPath} -> {r.m.FullPath}: {r.detail}"); continue; }
                 var copy = CloneWithSource(r.m, r.newSource);
@@ -590,6 +722,7 @@ public static class RuntimeInstaller
         OverlayService.SafeWrite(ManifestPath(gameDir), new UTF8Encoding(false).GetBytes(sb.ToString()));
         log($"Runtime manifest written: bin64\\{DataDirName}\\manifest.tsv ({served.Count} texture(s)).");
         EnsureAsiLoader(gameDir, log);
+        var otherRuntimes = CheckOtherRuntimes(gameDir, served.Select(m => m.FullPath), log);
 
         if (formatMismatch.Count > 0)
         {
@@ -619,6 +752,7 @@ public static class RuntimeInstaller
         Section("NOT FORMAT-CHECKED", unknownFormat);
         Section("INVALID PATH", badPath);
         Section("CONVERSION FAILED", convertFailed);
+        Section("OTHER RUNTIME PLUGINS / TEXTURES ALSO SERVED BY ANOTHER TOOL", otherRuntimes);
         Section("RE-ENCODED TO THE GAME'S FORMAT (texconv)", reencoded);
         rep.AppendLine();
         rep.AppendLine("== SERVED ==");

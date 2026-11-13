@@ -2,6 +2,30 @@
 
 This file is intended for users, forkers, and developers who need to understand the behavioral and safety changes between public source revisions.
 
+## v1.5.1
+
+Runtime mode (game 2.04/2.05) texture fixes.
+
+- DDS files exported with a DX10 header (BC1-BC5, the default of texconv,
+  Photoshop and NVTT for BC4/BC5) are rewritten to the game's DX9 header before
+  serving. Runtime mode keeps the vanilla PATHC record, so the 20-byte DX10
+  extension shifted every block and showed as stripes. Block data is unchanged.
+- ATI1/ATI2 FourCCs are written as BC4U/BC5U, as the game uses.
+- Textures with a mip chain shorter than full (often 1 mip) are given a full chain
+  with texconv, which removes the shimmering/moire at distance.
+- Re-encode step is about 9x faster: files go to texconv in batches of 32 and the
+  batches run in parallel (one single-threaded texconv per core). Output is
+  byte-identical; progress shows RE-ENCODE n/total.
+- Detects other runtime file servers: DMM 4.8+ (`DmmRuntime.asi` and
+  `bin64\dmm\manifest.tsv`) and stray copies of `CDHDRuntime.asi` in plugin
+  folders. Textures served by both tools are listed in the log and report. Packs
+  that ship BC7 where the game uses BC1/BC3 (rocks, cliffs) show stripes when
+  another tool serves them unconverted.
+- CDHD Runtime 1.0.1 logs a WARNING when another plugin hooked the game's pack
+  reader before it, or re-hooks it later, and names that DLL.
+- Engine texture cache stamp bumped (v2), so the next Easy Apply converts again.
+- Verified on game 2.05.
+
 ## v1.5.0
 
 Game 2.04 ("Charting the Unknown") support.

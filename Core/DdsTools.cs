@@ -94,6 +94,53 @@ public static class DdsTools
         return (outb, m);
     }
 
+    /// <summary>
+    /// Rewrites a DX10-header DDS in BC1-BC5 as the legacy 128-byte DX9 header the game
+    /// uses for those formats (the block data is unchanged). Game 2.04+ runtime mode keeps
+    /// the vanilla PATHC record, so a 148-byte header would shift every block by 20 bytes.
+    /// Returns the input unchanged for other formats, arrays, cubes and volumes.
+    /// </summary>
+    public static byte[] ToLegacyHeader(byte[] dds, out bool changed)
+    {
+        changed = false;
+        if (dds.Length < 128 || dds[0] != 'D' || dds[1] != 'D' || dds[2] != 'S' || dds[3] != ' ') return dds;
+        string cc = System.Text.Encoding.ASCII.GetString(dds, 84, 4);
+        // texconv/NVTT write BC4/BC5 as ATI1/ATI2; the game only uses BC4U/BC5U.
+        if (cc == "ATI1" || cc == "ATI2")
+        {
+            byte[] copy = (byte[])dds.Clone();
+            System.Text.Encoding.ASCII.GetBytes(cc == "ATI1" ? "BC4U" : "BC5U").CopyTo(copy, 84);
+            changed = true;
+            return copy;
+        }
+        if (dds.Length < 148 || cc != "DX10") return dds;
+        uint dxgi = BinaryUtil.U32(dds, 128);
+        uint dimension = BinaryUtil.U32(dds, 132);
+        uint miscFlag = BinaryUtil.U32(dds, 136);
+        uint arraySize = BinaryUtil.U32(dds, 140);
+        string? fourcc = dxgi switch
+        {
+            70 or 71 or 72 => "DXT1",
+            73 or 74 or 75 => "DXT3",
+            76 or 77 or 78 => "DXT5",
+            79 or 80 => "BC4U",
+            81 => "BC4S",
+            82 or 83 => "BC5U",
+            84 => "BC5S",
+            _ => null,
+        };
+        if (fourcc == null || dimension != 3 || (miscFlag & 0x4) != 0 || arraySize > 1) return dds;
+        byte[] outb = new byte[dds.Length - 20];
+        Buffer.BlockCopy(dds, 0, outb, 0, 128);
+        Buffer.BlockCopy(dds, 148, outb, 128, dds.Length - 148);
+        BinaryUtil.W32(outb, 76, 32);          // ddspf.dwSize
+        BinaryUtil.W32(outb, 80, 0x4);         // DDPF_FOURCC
+        System.Text.Encoding.ASCII.GetBytes(fourcc).CopyTo(outb, 84);
+        for (int o = 88; o < 108; o += 4) BinaryUtil.W32(outb, o, 0); // bit count + masks
+        changed = true;
+        return outb;
+    }
+
     public static uint GetFormatLast4(byte[] dds)
     {
         if (dds.Length < 92) return 0;

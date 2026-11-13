@@ -10,9 +10,9 @@ Game 2.04 runtime plugin (`CDHDRuntime.asi`) by **Khain (Nopal Studio)**.
 
 ## Download
 
-Get `HD_Overlay_Builder_v1.5.0.zip` from [Releases](https://github.com/nopal3d/CD_Texture_Overlay_Builder/releases). It is a single self-contained EXE (no .NET install needed) with the runtime plugin, texconv and the 64-bit Ultimate ASI Loader embedded. Some antivirus tools flag ASI loaders/plugins because they load into the game process; this is a false positive common to all ASI mods.
+Get `HD_Overlay_Builder_v1.5.1.zip` from [Releases](https://github.com/nopal3d/CD_Texture_Overlay_Builder/releases). It is a single self-contained EXE (no .NET install needed) with the runtime plugin, texconv and the 64-bit Ultimate ASI Loader embedded. Some antivirus tools flag ASI loaders/plugins because they load into the game process; this is a false positive common to all ASI mods.
 
-This repository contains the public **v1.5.0** source (adds game 2.04 support; see below). It is based on the fully validated v1.4 DDS release and adds post-update metadata safety, source-independent Hold/Release replay, transactional Relink recovery, duplicate-manifest canonicalization, managed base-meta rebasing, and storage throttling for slow/external drives.
+This repository contains the public **v1.5.1** source (adds game 2.04 support; see below). It is based on the fully validated v1.4 DDS release and adds post-update metadata safety, source-independent Hold/Release replay, transactional Relink recovery, duplicate-manifest canonicalization, managed base-meta rebasing, and storage throttling for slow/external drives.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the developer-facing change history and validation details.
 
@@ -37,6 +37,17 @@ switches to **runtime mode** automatically:
   subfolders of one folder and apply that folder.
 - Diagnostics: `bin64\cdhd\CDHDRuntime.log`. Create an empty `verbose` file in
   `bin64\cdhd` to log every texture served.
+
+### Striped or black textures on 2.04+
+
+- Install the pack with HD Overlay Builder only. If the same textures are also
+  mounted in DMM (or another tool that serves files at runtime), only one copy
+  reaches the game, and an unconverted copy (for example BC7 where the game uses
+  BC1) shows stripes. Easy Apply warns when `bin64\DmmRuntime.asi` serves textures
+  from this build; unmount the texture pack in DMM.
+- Keep only one `CDHDRuntime.asi` (in `bin64`, not also in `plugins` or `scripts`).
+- `bin64\cdhd\CDHDRuntime.log` shows `WARNING: pack reader slot ... hooked by ...`
+  when another plugin is in the way.
 
 See [`Runtime/README.md`](Runtime/README.md) for how the plugin works.
 

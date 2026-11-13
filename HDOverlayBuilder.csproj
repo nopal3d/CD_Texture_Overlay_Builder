@@ -8,10 +8,10 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>HD Overlay Builder</AssemblyName>
     <RootNamespace>CDTextureOverlayBuilder</RootNamespace>
-    <Version>1.5.0</Version>
-    <FileVersion>1.5.0.0</FileVersion>
-    <AssemblyVersion>1.5.0.0</AssemblyVersion>
-    <AssemblyInformationalVersion>1.5.0</AssemblyInformationalVersion>
+    <Version>1.5.1</Version>
+    <FileVersion>1.5.1.0</FileVersion>
+    <AssemblyVersion>1.5.1.0</AssemblyVersion>
+    <AssemblyInformationalVersion>1.5.1</AssemblyInformationalVersion>
     <Authors>Khain / .NET Port by Burstahh</Authors>
     <Company>Khain / .NET Port by Burstahh</Company>
     <Copyright>Khain / .NET Port by Burstahh</Copyright>
