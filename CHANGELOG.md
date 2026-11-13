@@ -2,6 +2,20 @@
 
 This file is intended for users, forkers, and developers who need to understand the behavioral and safety changes between public source revisions.
 
+## v1.5.1
+
+Runtime mode (game 2.04/2.05) texture fixes.
+
+- DDS files exported with a DX10 header (BC1-BC5, the default of texconv,
+  Photoshop and NVTT for BC4/BC5) are rewritten to the game's DX9 header before
+  serving. Runtime mode keeps the vanilla PATHC record, so the 20-byte DX10
+  extension shifted every block and showed as stripes. Block data is unchanged.
+- ATI1/ATI2 FourCCs are written as BC4U/BC5U, as the game uses.
+- Textures with a mip chain shorter than full (often 1 mip) are given a full chain
+  with texconv, which removes the shimmering/moire at distance.
+- Engine texture cache stamp bumped (v2), so the next Easy Apply converts again.
+- Verified on game 2.05.
+
 ## v1.5.0
 
 Game 2.04 ("Charting the Unknown") support.

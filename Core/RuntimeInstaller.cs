@@ -53,7 +53,7 @@ public static class RuntimeInstaller
         var result = new System.Collections.Concurrent.ConcurrentDictionary<MatchedFile, string>();
         var newIndex = new System.Collections.Concurrent.ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var fails = new System.Collections.Concurrent.ConcurrentBag<string>();
-        int done = 0, reused = 0, converted = 0;
+        int done = 0, reused = 0, converted = 0, dx10Fixed = 0;
         Parallel.ForEach(served, new ParallelOptions { MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 1, 6), CancellationToken = ct }, m =>
         {
             string target = OverlayBuilder.Norm(m.FullPath);
@@ -62,14 +62,15 @@ public static class RuntimeInstaller
             {
                 var src = new FileInfo(m.SourcePath);
                 uint code = last4.TryGetValue(m, out var c) ? c : 0;
-                string stamp = $"{src.FullName}|{src.Length}|{src.LastWriteTimeUtc.Ticks}|{code}|v1";
+                string stamp = $"{src.FullName}|{src.Length}|{src.LastWriteTimeUtc.Ticks}|{code}|v2";
                 if (oldIndex.TryGetValue(target, out var old) && old == stamp && File.Exists(dst))
                 {
                     Interlocked.Increment(ref reused);
                 }
                 else
                 {
-                    byte[] content = File.ReadAllBytes(src.FullName);
+                    byte[] content = DdsTools.ToLegacyHeader(File.ReadAllBytes(src.FullName), out bool legacy);
+                    if (legacy) Interlocked.Increment(ref dx10Fixed);
                     var (partial, _) = DdsTools.BuildPartialPayload(content);
                     byte[] buf = new byte[Math.Max(content.Length, partial.Length)];
                     Buffer.BlockCopy(partial, 0, buf, 0, partial.Length);
@@ -95,6 +96,7 @@ public static class RuntimeInstaller
             if (!keep.Contains(f)) { try { File.Delete(f); removed++; } catch { } }
         File.WriteAllLines(TextureCacheIndex(gameDir), newIndex.OrderBy(k => k.Key).Select(k => $"{k.Key}\t{k.Value}"));
         log($"Engine-format textures: {converted} converted, {reused} reused, {removed} stale removed (bin64\\{DataDirName}\\textures).");
+        if (dx10Fixed > 0) log($"Headers rewritten to the game's DX9 header (DX10 or ATI1/ATI2): {dx10Fixed} (block data unchanged).");
         failed = fails.ToList();
         return new Dictionary<MatchedFile, string>(result);
     }
@@ -216,12 +218,13 @@ public static class RuntimeInstaller
 
     private enum FormatCheck { Same, Different, Unknown }
 
-    private static FormatCheck CompareFormats(PazEntry? game, string sourcePath, out string detail) => CompareFormats(game, sourcePath, out detail, out _, out _);
+    private static FormatCheck CompareFormats(PazEntry? game, string sourcePath, out string detail) => CompareFormats(game, sourcePath, out detail, out _, out _, out _);
 
-    private static FormatCheck CompareFormats(PazEntry? game, string sourcePath, out string detail, out uint gameLast4, out string? gameFamily)
+    private static FormatCheck CompareFormats(PazEntry? game, string sourcePath, out string detail, out uint gameLast4, out string? gameFamily, out uint gameMips)
     {
         detail = "";
         gameLast4 = 0;
+        gameMips = 0;
         gameFamily = null;
         string? modFmt = null, gameFmt = null;
         try { modFmt = DdsFormatFamily(ReadHead(sourcePath, 0, 148)); } catch (Exception ex) { detail = $"cannot read source DDS: {ex.Message}"; return FormatCheck.Unknown; }
@@ -231,13 +234,33 @@ public static class RuntimeInstaller
         {
             byte[] gh = ReadHead(game.PazFile, game.Offset, 148);
             gameFmt = DdsFormatFamily(gh);
-            if (gh.Length >= 128) gameLast4 = BinaryUtil.U32(gh, 124);
+            if (gh.Length >= 128) { gameLast4 = BinaryUtil.U32(gh, 124); gameMips = Math.Max(1u, BinaryUtil.U32(gh, 28)); }
         }
         catch { }
         if (gameFmt == null) { detail = $"game header unreadable (mod {modFmt})"; return FormatCheck.Unknown; }
         gameFamily = gameFmt;
         detail = $"game {gameFmt}, mod {modFmt}";
         return gameFmt == modFmt ? FormatCheck.Same : FormatCheck.Different;
+    }
+
+    /// <summary>True when the DDS has fewer mips than its full chain down to 4x4 blocks.</summary>
+    private static bool MissingMips(string path, out string detail)
+    {
+        detail = "";
+        try
+        {
+            byte[] h = ReadHead(path, 0, 128);
+            if (h.Length < 128) return false;
+            uint height = Math.Max(1, BinaryUtil.U32(h, 12)), width = Math.Max(1, BinaryUtil.U32(h, 16));
+            uint mips = BinaryUtil.U32(h, 28);
+            if ((BinaryUtil.U32(h, 8) & 0x20000) == 0 || mips == 0) mips = 1; // DDSD_MIPMAPCOUNT not set
+            uint full = 1;
+            for (uint d = Math.Max(width, height); d > 4; d >>= 1) full++; // down to 4x4 is enough for block formats
+            if (mips >= full) return false;
+            detail = $"mod has {mips} mip(s), full chain is {full} -> mipmaps rebuilt";
+            return true;
+        }
+        catch { return false; }
     }
 
     // ------------------------------------------------------------------ re-encoding (texconv)
@@ -306,7 +329,7 @@ public static class RuntimeInstaller
             string outFile = Path.Combine(outDir, Path.GetFileName(it.m.SourcePath));
             var src = new FileInfo(it.m.SourcePath);
             string stampFile = outFile + ".src";
-            string stamp = $"{src.FullName}|{src.Length}|{src.LastWriteTimeUtc.Ticks}|{fmt}|v1";
+            string stamp = $"{src.FullName}|{src.Length}|{src.LastWriteTimeUtc.Ticks}|{fmt}|v2";
             try
             {
                 if (File.Exists(outFile) && File.Exists(stampFile) && File.ReadAllText(stampFile) == stamp)
@@ -316,7 +339,7 @@ public static class RuntimeInstaller
                     continue;
                 }
                 Directory.CreateDirectory(outDir);
-                var args = new List<string> { "-nologo", "-y", "-f", fmt, "-o", outDir };
+                var args = new List<string> { "-nologo", "-y", "-f", fmt, "-m", "0", "-o", outDir };
                 // The game's DDS headers are legacy DX9 for BC1-BC5; BC6H/BC7 need the DX10 header.
                 args.Add(it.family is "BC7" ? "-dx10" : "-dx9");
                 if (it.family == "BC1") { args.Add("-at"); args.Add("0.5"); }
@@ -536,7 +559,15 @@ public static class RuntimeInstaller
                 continue;
             }
             if (!seenTargets.Add(target)) continue;
-            var check = CompareFormats(index.Find(m.PamtDir, m.EntryPath), source, out string detail, out uint gameLast4, out string? gameFamily);
+            var check = CompareFormats(index.Find(m.PamtDir, m.EntryPath), source, out string detail, out uint gameLast4, out string? gameFamily, out uint gameMips);
+            // A mip chain shorter than the game's (often 1 mip from some exporters) shows
+            // shimmering stripes/moire at distance: rebuild the full chain with texconv.
+            if (check == FormatCheck.Same && gameMips > 1 && gameFamily != null && TexconvFormat(gameFamily) != null
+                && MissingMips(source, out string mipDetail))
+            {
+                check = FormatCheck.Different;
+                detail += "; " + mipDetail;
+            }
             if (check == FormatCheck.Different)
             {
                 if (gameFamily != null && TexconvFormat(gameFamily) != null) toReencode.Add((m, gameFamily, gameLast4, detail));

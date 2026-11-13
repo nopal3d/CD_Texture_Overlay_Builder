@@ -3,9 +3,9 @@ setlocal
 cd /d "%~dp0"
 
 set "APP_EXE=HD Overlay Builder.exe"
-set "VERSION=1.5.0"
-set "PUBLIC_ZIP=HD_Overlay_Builder_v1.5.0.zip"
-set "SOURCE_ZIP=HD_Overlay_Builder_v1.5.0_SOURCE.zip"
+set "VERSION=1.5.1"
+set "PUBLIC_ZIP=HD_Overlay_Builder_v1.5.1.zip"
+set "SOURCE_ZIP=HD_Overlay_Builder_v1.5.1_SOURCE.zip"
 set "OUT_DIR=%CD%\publish\HD Overlay Builder"
 set "PROJECT_FILE=HDOverlayBuilder.csproj"
 

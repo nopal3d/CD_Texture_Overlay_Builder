@@ -10,9 +10,9 @@ Game 2.04 runtime plugin (`CDHDRuntime.asi`) by **Khain (Nopal Studio)**.
 
 ## Download
 
-Get `HD_Overlay_Builder_v1.5.0.zip` from [Releases](https://github.com/nopal3d/CD_Texture_Overlay_Builder/releases). It is a single self-contained EXE (no .NET install needed) with the runtime plugin, texconv and the 64-bit Ultimate ASI Loader embedded. Some antivirus tools flag ASI loaders/plugins because they load into the game process; this is a false positive common to all ASI mods.
+Get `HD_Overlay_Builder_v1.5.1.zip` from [Releases](https://github.com/nopal3d/CD_Texture_Overlay_Builder/releases). It is a single self-contained EXE (no .NET install needed) with the runtime plugin, texconv and the 64-bit Ultimate ASI Loader embedded. Some antivirus tools flag ASI loaders/plugins because they load into the game process; this is a false positive common to all ASI mods.
 
-This repository contains the public **v1.5.0** source (adds game 2.04 support; see below). It is based on the fully validated v1.4 DDS release and adds post-update metadata safety, source-independent Hold/Release replay, transactional Relink recovery, duplicate-manifest canonicalization, managed base-meta rebasing, and storage throttling for slow/external drives.
+This repository contains the public **v1.5.1** source (adds game 2.04 support; see below). It is based on the fully validated v1.4 DDS release and adds post-update metadata safety, source-independent Hold/Release replay, transactional Relink recovery, duplicate-manifest canonicalization, managed base-meta rebasing, and storage throttling for slow/external drives.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the developer-facing change history and validation details.
 
